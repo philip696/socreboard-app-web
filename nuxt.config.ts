@@ -16,8 +16,8 @@ export default defineNuxtConfig({
   // Nitro configuration for Cloudflare Pages
   nitro: {
     prerender: {
-      routes: ["/"],
-      crawlLinks: false,
+      routes: ["/", "/controller", "/configuration", "/splashscreen"],
+      crawlLinks: true,
     },
     // Use Cloudflare Pages as the preset
     preset: "cloudflare-pages",
