@@ -3,9 +3,14 @@ import { initializeApp } from "firebase/app";
 import { getDatabase } from "firebase/database";
 import { getFirestore } from "firebase/firestore";
 
-export default defineNuxtPlugin(() => {
-  // Only initialize Firebase on client side
+export default defineNuxtPlugin(async () => {
+  // Only initialize Firebase on client side with lazy imports
   if (process.client) {
+    // Dynamically import Firebase only in browser
+    const { initializeApp } = await import("firebase/app");
+    const { getDatabase } = await import("firebase/database");
+    const { getFirestore } = await import("firebase/firestore");
+    
     const config = useRuntimeConfig();
 
     const firebaseConfig = {
