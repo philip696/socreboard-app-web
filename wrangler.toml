@@ -1,45 +1,20 @@
-name = "scoreboard-worker"
-main = "server/worker.ts"
-compatibility_date = "2024-04-01"
-compatibility_flags = ["nodejs_compat"]
+name = "scoreboard-app-web"
 
-# Cloudflare Pages configuration
-pages_build_output_dir = ".output/public"
+# Cloudflare Pages configuration (ESR build output)
+pages_build_output_dir = "dist/"
 
-# Environment variables for RabbitMQ
+# Production environment variables (set in Cloudflare Pages dashboard)
 [env.production]
 vars = { ENVIRONMENT = "production" }
 
-[env.staging]
-vars = { ENVIRONMENT = "staging" }
+# Preview environment variables
+[env.preview]
+vars = { ENVIRONMENT = "preview" }
 
-[env.development]
-vars = { ENVIRONMENT = "development" }
-
-# Secrets (set via wrangler secret put command)
-# Run: wrangler secret put FIREBASE_API_KEY
-# Run: wrangler secret put FIREBASE_AUTH_DOMAIN
-# Run: wrangler secret put FIREBASE_PROJECT_ID
-# Run: wrangler secret put FIREBASE_STORAGE_BUCKET
-# Run: wrangler secret put FIREBASE_MESSAGING_SENDER_ID
-# Run: wrangler secret put FIREBASE_APP_ID
-# Run: wrangler secret put RABBITMQ_HOST
-# Run: wrangler secret put RABBITMQ_USERNAME
-# Run: wrangler secret put RABBITMQ_PASSWORD
-
-[vars]
-FIREBASE_API_KEY = ""
-FIREBASE_AUTH_DOMAIN = ""
-FIREBASE_PROJECT_ID = ""
-FIREBASE_STORAGE_BUCKET = ""
-FIREBASE_MESSAGING_SENDER_ID = ""
-FIREBASE_APP_ID = ""
-
-# [build]
-# command = "npm run build"
-# watch_paths = ["src/**/*.ts", "pages/**/*.vue"]
-
-# Routes for API endpoints
-[[routes]]
-pattern = "api/*"
-zone_name = "example.com"  # Change this to your domain
+# Note: Set these environment variables in Cloudflare Pages dashboard:
+# - FIREBASE_API_KEY
+# - FIREBASE_AUTH_DOMAIN
+# - FIREBASE_PROJECT_ID
+# - FIREBASE_STORAGE_BUCKET
+# - FIREBASE_MESSAGING_SENDER_ID
+# - FIREBASE_APP_ID
