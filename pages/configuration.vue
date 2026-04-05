@@ -143,10 +143,11 @@
 </template>
 
 <script lang="ts">
-import { invoke } from '@tauri-apps/api/tauri';
-import { emit, listen } from '@tauri-apps/api/event';
-
 export default {
+    setup() {
+        const { emit } = useEventBus();
+        return { emit };
+    },
     data() {
         return {
             config: {
@@ -169,40 +170,29 @@ export default {
     },
     methods: {
         async saveConfig() {
-            let result = await invoke('save_config', {
-                rabbitmqHost: this.config.rabbitmq_host,
-                rabbitmqUsername: this.config.rabbitmq_username,
-                rabbitmqPassword: this.config.rabbitmq_password,
-                eventId: this.config.event_id,
-                fieldId: this.config.field_id,
-                scorerUrl: this.config.scorer_url,
-                darkStatisticUrl: this.config.dark_statistic_url,
-                lightStatisticUrl: this.config.light_statistic_url,
-                manOfTheMatchUrl: this.config.man_of_the_match_url,
-                topPlayerUrl: this.config.top_player_url
-            });
-
-            if (!result) {
+            try {
+                // Save configuration to localStorage
+                localStorage.setItem('scoreboard_config', JSON.stringify(this.config));
                 this.showNotif('success', 'Config saved');
-            } else {
+            } catch (error) {
+                console.error('Failed to save config:', error);
                 this.showNotif('failed', 'Failed to save config');
             }
         },
         async openApplication() {
-            await invoke('save_config', {
-                rabbitmqHost: this.config.rabbitmq_host,
-                rabbitmqUsername: this.config.rabbitmq_username,
-                rabbitmqPassword: this.config.rabbitmq_password,
-                eventId: this.config.event_id,
-                fieldId: this.config.field_id,
-                scorerUrl: this.config.scorer_url,
-                darkStatisticUrl: this.config.dark_statistic_url,
-                lightStatisticUrl: this.config.light_statistic_url,
-                manOfTheMatchUrl: this.config.man_of_the_match_url,
-                topPlayerUrl: this.config.top_player_url
-            });
-            await emit('update_config_event', this.config);
-            invoke('end_config');
+            try {
+                // Save configuration
+                localStorage.setItem('scoreboard_config', JSON.stringify(this.config));
+                
+                // Emit update event to notify other components
+                this.emit('update_config_event', this.config);
+                
+                // Navigate back to controller
+                this.$router.push('/controller');
+            } catch (error) {
+                console.error('Failed to apply configuration:', error);
+                this.showNotif('failed', 'Failed to apply configuration');
+            }
         },
         async preview(url: string) {
             this.preview_url = url;
@@ -217,7 +207,15 @@ export default {
         }
     },
     async mounted() {
-        this.config = await invoke('get_config');
+        // Load configuration from localStorage
+        const stored = localStorage.getItem('scoreboard_config');
+        if (stored) {
+            try {
+                this.config = JSON.parse(stored);
+            } catch (error) {
+                console.error('Failed to parse stored config:', error);
+            }
+        }
     }
 }
 </script>

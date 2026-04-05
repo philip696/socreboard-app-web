@@ -1,10 +1,10 @@
 <template>
     <div class="fixed container-body font-basementGrotesque bg-[url('~/assets/img/mock.jpg')]">
-        <div data-tauri-drag-region class="flex items-center justify-end h-[5%] w-full bg-slate-300 hover:cursor-move"
+        <div class="flex items-center justify-end h-[5%] w-full bg-slate-300 hover:cursor-move"
             id="handle">
-            <span data-tauri-drag-region class="w-full text-center text-2xl font-bold">Controller</span>
+            <span class="w-full text-center text-2xl font-bold">Scoreboard</span>
             <button class="bg-blue-500 hover:bg-blue-600 active:bg-blue-900 text-white font-bold py-2 px-4 rounded"
-                @click="toggleFullscreen">o</button>
+                @click="toggleFullscreen">⛶</button>
         </div>
         <div class="bg-iframe">
             <!-- <iframe width="560" height="315" src="https://www.youtube.com/embed/Ps-0f0K6izM?si=mj9tm8_keiaPgwZC&autoplay=1&controls=0&loop=1&showinfo=0" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe> -->
@@ -121,8 +121,6 @@
 </template>
 
 <script lang="ts">
-import { invoke } from '@tauri-apps/api/tauri';
-import { emit, listen } from '@tauri-apps/api/event';
 import type { TeamInfo } from '~/types/TeamInfo';
 import { doc, updateDoc } from 'firebase/firestore';
 
@@ -158,65 +156,71 @@ export default {
             } as TeamInfo,
         }
     },
+    setup() {
+        const { on, emit } = useEventBus();
+        return { on, emit };
+    },
     async mounted() {
-        await listen('start_timer_event', (event: any) => {
-            this.startTimer(event.payload.initialTime);
-        })
-        await listen('stop_timer_event', (event: any) => {
+        // Listen to events from controller
+        this.on('start_timer_event', (payload: any) => {
+            this.startTimer(payload.initialTime);
+        });
+        
+        this.on('stop_timer_event', (payload: any) => {
             this.stopTimer();
-        })
-        await listen('start_timeout_event', (event: any) => {
-            this.startTimeout(event.payload.team, event.payload.initialTime);
-        })
-        await listen('stop_timeout_event', (event: any) => {
+        });
+        
+        this.on('start_timeout_event', (payload: any) => {
+            this.startTimeout(payload.team, payload.initialTime);
+        });
+        
+        this.on('stop_timeout_event', (payload: any) => {
             this.stopTimeout();
-        })
-        await listen('show_banner', (event: any) => {
-            this.showBanner(event.payload.url);
-        })
-        await listen('hide_banner', (event: any) => {
+        });
+        
+        this.on('show_banner', (payload: any) => {
+            this.showBanner(payload.url);
+        });
+        
+        this.on('hide_banner', (payload: any) => {
             this.hideBanner();
-        })
-        await listen('quarter_event', (event: any) => {
-            this.quarter = event.payload.quarter;
-            invoke('update_quarter', { quarter: this.quarter })
-        })
+        });
+        
+        this.on('quarter_event', (payload: any) => {
+            this.quarter = payload.quarter;
+        });
 
-        await listen('quarter_step_event', (event: any) => {
-            switch (event.payload.step) {
+        this.on('quarter_step_event', (payload: any) => {
+            switch (payload.step) {
                 case 'up':
                     this.quarter += 1;
                     break;
-
                 case 'down':
                     this.quarter = this.quarter - 1 < 0 ? 0 : this.quarter - 1;
                     break;
-
                 default:
                     break;
             }
-        })
+        });
 
-        await listen('change_time_event', (event: any) => {
-            this.time = this.time + (event.payload.value * 1000);
-        })
+        this.on('change_time_event', (payload: any) => {
+            this.time = this.time + (payload.value * 1000);
+        });
 
-        await listen('team_name_event', (event: any) => {
-            switch (event.payload.team) {
+        this.on('team_name_event', (payload: any) => {
+            switch (payload.team) {
                 case 'teamA':
-                    this.teamA.name = event.payload.name;
+                    this.teamA.name = payload.name;
                     break;
-
                 case 'teamB':
-                    this.teamB.name = event.payload.name;
+                    this.teamB.name = payload.name;
                     break;
-
                 default:
                     break;
             }
-        })
+        });
 
-        await listen('3point_event', (event: any) => {
+        this.on('3point_event', (payload: any) => {
             this.is3Point = true;
             const videoElement = this.$refs.threePointPlayer as HTMLVideoElement;
             if (videoElement) {
@@ -228,9 +232,9 @@ export default {
                     this.is3Point = false;
                 }, 3000);
             }
-        })
+        });
 
-        await listen('and_one_event', (event: any) => {
+        this.on('and_one_event', (payload: any) => {
             this.isAndOne = true;
             const videoElement = this.$refs.andOnePlayer as HTMLVideoElement;
             if (videoElement) {
@@ -242,152 +246,133 @@ export default {
                     this.isAndOne = false;
                 }, 3000);
             }
-        })
+        });
 
-        await listen('score_step_event', (event: any) => {
-            switch (event.payload.step) {
+        this.on('score_step_event', (payload: any) => {
+            switch (payload.step) {
                 case 'up':
-                    switch (event.payload.team) {
+                    switch (payload.team) {
                         case 'teamA':
                             this.teamA.score += 1;
                             break;
-
                         case 'teamB':
                             this.teamB.score += 1;
                             break;
-
                         default:
                             break;
                     }
                     break;
-
                 case 'down':
-                    switch (event.payload.team) {
+                    switch (payload.team) {
                         case 'teamA':
                             this.teamA.score = this.teamA.score - 1 < 0 ? 0 : this.teamA.score - 1;
                             break;
-
                         case 'teamB':
                             this.teamB.score = this.teamB.score - 1 < 0 ? 0 : this.teamB.score - 1;
                             break;
-
                         default:
                             break;
                     }
                     break;
-
                 default:
                     break;
             }
-        })
-        await listen('foul_step_event', (event: any) => {
-            switch (event.payload.step) {
+        });
+        
+        this.on('foul_step_event', (payload: any) => {
+            switch (payload.step) {
                 case 'up':
-                    switch (event.payload.team) {
+                    switch (payload.team) {
                         case 'teamA':
                             this.teamA.foul += 1;
                             break;
-
                         case 'teamB':
                             this.teamB.foul += 1;
                             break;
-
                         default:
                             break;
                     }
                     break;
-
                 case 'down':
-                    switch (event.payload.team) {
+                    switch (payload.team) {
                         case 'teamA':
                             this.teamA.foul = this.teamA.foul - 1 < 0 ? 0 : this.teamA.foul - 1;
                             break;
-
                         case 'teamB':
                             this.teamB.foul = this.teamB.foul - 1 < 0 ? 0 : this.teamB.foul - 1;
                             break;
-
                         default:
                             break;
                     }
                     break;
-
                 default:
                     break;
             }
-        })
-        await listen('timeout_step_event', (event: any) => {
-            switch (event.payload.step) {
+        });
+        
+        this.on('timeout_step_event', (payload: any) => {
+            switch (payload.step) {
                 case 'up':
-                    switch (event.payload.team) {
+                    switch (payload.team) {
                         case 'teamA':
                             this.teamA.timeout = this.teamA.timeout + 1 > 3 ? 3 : this.teamA.timeout + 1;
                             break;
-
                         case 'teamB':
                             this.teamB.timeout = this.teamB.timeout + 1 > 3 ? 3 : this.teamB.timeout + 1;
                             break;
-
                         default:
                             break;
                     }
                     break;
-
                 case 'down':
-                    switch (event.payload.team) {
+                    switch (payload.team) {
                         case 'teamA':
                             this.teamA.timeout = this.teamA.timeout - 1 < 0 ? 0 : this.teamA.timeout - 1;
                             break;
-
                         case 'teamB':
                             this.teamB.timeout = this.teamB.timeout - 1 < 0 ? 0 : this.teamB.timeout - 1;
                             break;
-
                         default:
                             break;
                     }
                     break;
-
                 default:
                     break;
             }
-        })
+        });
     },
     watch: {
         teamA: {
             handler(newVal, oldVal) {
-                console.log(newVal, oldVal)
-                emit('team_a_event', {
+                this.emit('team_a_event', {
                     teamA: {
                         name: this.teamA.name,
                         score: this.teamA.score,
                         foul: this.teamA.foul,
                         timeout: this.teamA.timeout
                     },
-                })
+                });
             },
             deep: true
         },
         teamB: {
             handler(newVal, oldVal) {
-                console.log(newVal, oldVal)
-                emit('team_b_event', {
+                this.emit('team_b_event', {
                     teamB: {
                         name: this.teamB.name,
                         score: this.teamB.score,
                         foul: this.teamB.foul,
                         timeout: this.teamB.timeout
                     },
-                })
+                });
             },
             deep: true
         },
         quarter: {
             handler(newVal, oldVal) {
-                console.log(newVal, oldVal)
-                emit('quarter_event', {
+                this.emit('quarter_event', {
                     quarter: this.quarter
-                })
+                });
             },
         }
     },
@@ -397,28 +382,22 @@ export default {
                 const milliseconds = (this.time % 1000) / 10;
                 const seconds = Math.floor(this.time / 1000) % 60;
                 const minutes = Math.floor(this.time / (1000 * 60)) % 60;
-
                 const strMinutes = String((minutes < 10) ? "0" + minutes.toFixed(0) : minutes.toFixed(0));
                 const strSeconds = String((seconds < 10) ? "0" + seconds.toFixed(0) : seconds.toFixed(0));
-                const strMilliseconds = String((milliseconds < 10) ? "0" + milliseconds.toFixed(0) : milliseconds.toFixed(0));
-
-                return strMinutes + ":" + strSeconds;// + "." + strMilliseconds;
+                return strMinutes + ":" + strSeconds;
             } else {
                 const milliseconds = (this.time % 1000) / 10;
                 const seconds = Math.floor(this.time / 1000) % 60;
                 const minutes = Math.floor(this.time / (1000 * 60)) % 60;
-                return `${seconds}.${milliseconds.toFixed(0)}`; //minutes + ":" + seconds;
+                return `${seconds}.${milliseconds.toFixed(0)}`;
             }
         },
         formatedTimeout() {
             const milliseconds = (this.timeout % 1000) / 10;
             const seconds = Math.floor(this.timeout / 1000) % 60;
             const minutes = Math.floor(this.timeout / (1000 * 60)) % 60;
-
             const strMinutes = String((minutes < 10) ? "0" + minutes.toFixed(0) : minutes.toFixed(0));
             const strSeconds = String((seconds < 10) ? "0" + seconds.toFixed(0) : seconds.toFixed(0));
-            const strMilliseconds = String((milliseconds < 10) ? "0" + milliseconds.toFixed(0) : milliseconds.toFixed(0));
-
             return strSeconds;
         },
         quarterName() {
@@ -440,87 +419,59 @@ export default {
     },
     methods: {
         toggleFullscreen() {
-            invoke('toggle_fullscreen');
+            if (document.fullscreenElement) {
+                document.exitFullscreen().catch(err => console.error(err));
+            } else {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            }
         },
         startTimer(initialTime: number = 600000) {
-            // const adsWindow = new WebviewWindow('ads');
-            // adsWindow.show();
-            console.log(initialTime);
             if (!this.isRunning) {
                 this.isRunning = true;
                 this.time = initialTime;
-
                 this.timer = setInterval(() => {
                     this.timerUpdateCounter += 1;
-                    if (this.timerUpdateCounter >= 10) {
-                        this.timerUpdateCounter = 0;
-                        invoke('update_time', { time: this.formatedTime });
-                        emit('timer_event', { value: this.time });
-                    }
-                    this.time -= 10; // Increment every 10 milliseconds
+                    this.time -= 10;
                     if (this.time <= 0) {
                         this.time = 0;
                         this.stopTimer();
-                        emit('timer_event', { value: this.time });
-                        emit('timer_stop_event');
+                        this.emit('timer_stop_event');
                     }
                 }, 10);
             }
         },
         stopTimer() {
             this.isRunning = false;
-            clearInterval(this.timer);
+            if (this.timer) {
+                clearInterval(this.timer);
+            }
         },
         startTimeout(team: String, initialTime: number = 60000) {
-            console.log(team)
             if (!this.isTimeout) {
                 this.isTimeout = true;
                 this.timeout = initialTime;
                 this.timerTimeout = setInterval(() => {
                     this.timeoutUpdateCounter += 1;
-                    if (this.timeoutUpdateCounter >= 10) {
-                        this.timeoutUpdateCounter = 0;
-                        emit('timeout_event', { value: this.timeout });
-                    }
                     this.timeout -= 10;
                     if (this.timeout <= 0) {
                         this.stopTimeout();
-                        emit('timeout_event', { value: this.timeout });
                     }
                 }, 10);
             }
         },
         stopTimeout() {
             this.isTimeout = false;
-            clearInterval(this.timerTimeout);
+            if (this.timerTimeout) {
+                clearInterval(this.timerTimeout);
+            }
         },
         showBanner(url: string) {
             this.previewUrl = url;
             this.isBannerShown = true;
-            // setTimeout(() => {
-            //     this.isBannerShown = false;
-            // }, 3000);
         },
         hideBanner() {
             this.isBannerShown = false;
         },
-        async sendToFirebase() {
-            const { $firestore: firestore } = useNuxtApp();
-
-            // Reference to a document in Firestore
-            const docRef = doc(firestore, 'scoreboard_timer', 'stream1');
-
-            try {
-                await updateDoc(docRef, {
-                    minutes: this.formatedTime, // Fields to update
-                    // ... more fields to update
-                });
-                console.log('Document updated successfully');
-            } catch (error) {
-                console.error('Error updating document: ', error);
-            }
-
-        }
     },
 }
 </script>

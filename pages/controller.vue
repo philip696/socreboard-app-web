@@ -1,15 +1,18 @@
 <template>
     <div class="fixed w-screen h-screen bg-slate-400">
-        <div data-tauri-drag-region class="flex items-center justify-end h-[5%] w-full bg-slate-300 hover:cursor-move">
-            <span data-tauri-drag-region class="w-full text-center text-2xl font-bold">Controller</span>
+        <div class="flex items-center justify-end h-[5%] w-full bg-slate-300">
+            <span class="w-full text-center text-2xl font-bold">Controller</span>
             <button class="bg-blue-500 hover:bg-blue-600 active:bg-blue-900 text-white font-bold py-2 px-4 rounded"
-                @click="toggleFullscreen">o</button>
+                @click="toggleFullscreen">⛶</button>
             <button class="bg-red-500 hover:bg-red-600 active:bg-red-900 text-white font-bold py-2 px-4 rounded"
-                @click="closeApp">x</button>
+                @click="closeApp">✕</button>
         </div>
         <div class="flex flex-col items-center overflow-y-scroll overscroll-x-hidden p-8 h-full w-full">
             <div class="flex items-center justify-between w-full">
                 <TeamController defaultname="Terang" teamname="teamA" :info="teamA"
+                    @score-update="handleScoreUpdate"
+                    @foul-update="handleFoulUpdate"
+                    @timeout-update="handleTimeoutUpdate"
                     class="flex flex-col items-center justify-center h-full w-1/3" />
                 <div class="flex flex-col items-center justify-center h-full w-1/3">
                     <span class="text-3xl font-bold mb-3">CONTROLLER</span>
@@ -82,6 +85,9 @@
                     </div>
                 </div>
                 <TeamController defaultname="Gelap" teamname="teamB" :info="teamB"
+                    @score-update="handleScoreUpdate"
+                    @foul-update="handleFoulUpdate"
+                    @timeout-update="handleTimeoutUpdate"
                     class="flex flex-col items-center justify-center h-full w-1/3" />
             </div>
             <div class="flex items-center justify-around">
@@ -159,16 +165,8 @@
 </template>
 
 <script lang="ts">
-import { emit, listen } from '@tauri-apps/api/event';
-import { convertFileSrc, invoke } from '@tauri-apps/api/tauri';
 import type { TeamInfo } from '~/types/TeamInfo';
-import { getCurrent } from '@tauri-apps/api/window';
-import { readDir, type FileEntry } from '@tauri-apps/api/fs';
 import { ref } from 'vue'
-
-import { open } from '@tauri-apps/api/dialog';
-import { appDataDir } from '@tauri-apps/api/path';
-
 
 type PreviewUrl = {
     'scorer_url': string,
@@ -180,28 +178,32 @@ type PreviewUrl = {
 
 export default {
     setup() {
-      const adDirectories = ref<FileEntry[]>([]);
+      const adDirectories = ref<string[]>([]);
+      const { on, emit, invoke } = useEventBus();
+      const serialPort = useSerialPort();
 
-      async function openAdDirectory() {
-        const dir = await open({
-          directory: true,
-          multiple: false,
-          
-          defaultPath: await appDataDir()
-        })
+      // For now, ad directories are stored in localStorage
+      // In a real app, you'd have an API endpoint to list available ads
+      const loadAdDirectories = () => {
+        const stored = localStorage.getItem('adDirectories');
+        if (stored) {
+          adDirectories.value = JSON.parse(stored);
+        }
+      };
 
-        if (dir === null) return;
-        
-        adDirectories.value = (await readDir(dir as string)).filter(e => e.children !== undefined);
-      }
+      const saveAdDirectories = () => {
+        localStorage.setItem('adDirectories', JSON.stringify(adDirectories.value));
+      };
 
-      async function playAdDirectory(dir: FileEntry) {
-        // invoke event to rust backend 
-      }
+      loadAdDirectories();
 
       return {
         adDirectories,
-        openAdDirectory
+        saveAdDirectories,
+        on,
+        emit,
+        invoke,
+        serialPort
       }
     },
     data() {
@@ -246,45 +248,104 @@ export default {
     mounted() {
         this.fetchSerialPorts();
 
-        listen('timer_event', (event: any) => {
-            this.time = event.payload.value;
+        this.on('timer_event', (payload: any) => {
+            this.time = payload.value;
             this.isRunning = true;
             this.lastTimeUpdate = Date.now();
         });
 
-        listen('timeout_event', (event: any) => {
-            // console.log(event.payload.value)
-            this.timeout = event.payload.value;
+        this.on('timeout_event', (payload: any) => {
+            this.timeout = payload.value;
             this.isTimeout = true;
             this.lastTimeoutUpdate = Date.now();
         });
 
-        listen('team_a_event', (event: any) => {
-            this.teamA = event.payload.teamA
+        this.on('team_a_event', (payload: any) => {
+            this.teamA = payload.teamA
             if (this.teamA.name == '') {
                 this.teamA.name = 'Gelap';
             }
         });
 
-        listen('team_b_event', (event: any) => {
-            this.teamB = event.payload.teamB
+        this.on('team_b_event', (payload: any) => {
+            this.teamB = payload.teamB
             if (this.teamB.name == '') {
                 this.teamB.name = 'Terang';
             }
         });
 
-        listen('quarter_event', (event: any) => {
-            console.log(event.payload.quarter)
-            invoke('update_quarter', { quarter: `${event.payload.quarter}` })
-            this.quarter = event.payload.quarter;
+        this.on('quarter_event', (payload: any) => {
+            this.quarter = payload.quarter;
         });
 
-        listen('timer_stop_event', (event: any) => {
+        this.on('timer_stop_event', (payload: any) => {
             this.isRunning = false;
             this.triggerAlarm();
         });
 
-        listen('update_config_event', (event: any) => {
+        // Score button handlers
+        this.on('score_step_event', async (payload: any) => {
+            const teamId = payload.team === 'teamA' ? 'teamA' : 'teamB';
+            const currentScore = this[teamId].score;
+            const newScore = payload.step === 'up' ? currentScore + 1 : currentScore - 1;
+            this[teamId].score = Math.max(0, newScore);
+            
+            // Call API to persist (non-blocking)
+            try {
+                await fetch('/api/score/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        teamId,
+                        scorePoints: Math.max(0, newScore),
+                        action: 'set'
+                    })
+                });
+            } catch (error) {
+                console.warn('Score update API failed:', error);
+            }
+        });
+
+        // Foul button handlers
+        this.on('foul_step_event', async (payload: any) => {
+            const teamId = payload.team === 'teamA' ? 'teamA' : 'teamB';
+            const currentFoul = this[teamId].foul;
+            const newFoul = payload.step === 'up' ? currentFoul + 1 : currentFoul - 1;
+            this[teamId].foul = Math.max(0, newFoul);
+        });
+
+        // Timeout button handlers
+        this.on('timeout_step_event', async (payload: any) => {
+            const teamId = payload.team === 'teamA' ? 'teamA' : 'teamB';
+            const currentTimeout = this[teamId].timeout;
+            const newTimeout = payload.step === 'up' ? currentTimeout + 1 : currentTimeout - 1;
+            this[teamId].timeout = Math.max(0, newTimeout);
+        });
+
+        // Quarter button handlers
+        this.on('quarter_step_event', async (payload: any) => {
+            const newQuarter = payload.step === 'up' ? this.quarter + 1 : this.quarter - 1;
+            const quarter = Math.max(1, Math.min(4, newQuarter));
+            this.quarter = quarter;
+            
+            // Call API to persist (non-blocking)
+            try {
+                await fetch('/api/score/quarter', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ quarter })
+                });
+            } catch (error) {
+                console.warn('Quarter update API failed:', error);
+            }
+        });
+
+        // Timer change handlers
+        this.on('change_time_event', (payload: any) => {
+            this.time = Math.max(0, this.time + (payload.value * 1000));
+        });
+
+        this.on('update_config_event', (payload: any) => {
             this.getConfig();
         });
 
@@ -321,111 +382,128 @@ export default {
 
             const strMinutes = String((minutes < 10) ? "0" + minutes.toFixed(0) : minutes.toFixed(0));
             const strSeconds = String((seconds < 10) ? "0" + seconds.toFixed(0) : seconds.toFixed(0));
-            const strMilliseconds = String((milliseconds < 10) ? "0" + milliseconds.toFixed(0) : milliseconds.toFixed(0));
 
             return strSeconds;
-        },
-        windowName() {
-            const window = getCurrent();
-            const windowName = window.label;
-            return windowName;
         }
     },
     methods: {
         async getConfig() {
-            invoke('get_config').then((state: any) => {
-                this.listUrl = state;
-            })
+            // Config is stored in localStorage on the web version
+            const stored = localStorage.getItem('scoreboard_config');
+            if (stored) {
+                this.listUrl = JSON.parse(stored);
+            }
+        },
+        async handleScoreUpdate(payload: any) {
+            // API call to persist score
+            try {
+                await fetch('/api/score/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        teamId: payload.team,
+                        scorePoints: payload.score,
+                        action: 'set'
+                    })
+                });
+            } catch (error) {
+                console.warn('Score API failed:', error);
+            }
+        },
+        async handleFoulUpdate(payload: any) {
+            // Foul update - just local for now
+        },
+        async handleTimeoutUpdate(payload: any) {
+            // Timeout update - just local for now
         },
         async startTimer() {
             if (this.time > 0) {
-                emit('start_timer_event', { initialTime: this.time })
+                this.emit('start_timer_event', { initialTime: this.time })
             } else {
-                emit('start_timer_event', { initialTime: 600000 })
+                this.emit('start_timer_event', { initialTime: 600000 })
             }
         },
         async openConfig() {
-            invoke('open_config');
+            // Navigate to configuration page instead of invoking command
+            this.$router.push('/configuration');
         },
         async triggerAlarm() {
-            console.log('trigger alarm');
-            invoke('trigger_alarm', { portName: this.selectedPort, duration: this.alarmDuration });
+            try {
+                await this.serialPort.triggerAlarm(parseInt(this.alarmDuration));
+                this.showNotif('success', 'Alarm triggered');
+            } catch (error) {
+                console.error('Failed to trigger alarm:', error);
+                this.showNotif('failed', 'Failed to trigger alarm');
+            }
         },
         async stopTimer() {
-            emit('stop_timer_event');
+            this.emit('stop_timer_event');
         },
         async startTimerTimeout() {
-            emit('start_timeout_event', { initialTime: 60000 });
+            this.emit('start_timeout_event', { initialTime: 60000 });
         },
         async stopTimerTimeout() {
-            emit('stop_timeout_event');
+            this.emit('stop_timeout_event');
         },
         async toggleBanner(key: "scorer_url" | "dark_statistic_url" | "light_statistic_url" | "man_of_the_match_url" | "top_player_url") {
             if (this.showingBanner == key) {
-                emit('hide_banner', {});
+                this.emit('hide_banner', {});
                 this.showingBanner = '';
             } else {
-                emit('show_banner', { url: this.listUrl[key] });
+                this.emit('show_banner', { url: this.listUrl[key] });
                 this.showingBanner = key;
-
             }
         },
         async triggerEvent(event_name: string) {
-            emit(`${event_name}_event`, {});
+            this.emit(`${event_name}_event`, {});
         },
         async toggleFullscreen() {
-            invoke('toggle_fullscreen');
+            if (document.fullscreenElement) {
+                document.exitFullscreen().catch(err => console.error(err));
+            } else {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            }
         },
-        // async updateQuarter() {
-        //     emit('quarter_event', { quarter: this.quarter });
-        // },
         async fetchSerialPorts() {
             try {
-                const ports = await invoke('list_serial_ports') as string[];
-                this.serialPorts = ports;
+                await this.serialPort.getPairedPorts();
+                // availablePorts is a ref, so we need .value
+                const ports = this.serialPort.availablePorts?.value || [];
+                this.serialPorts = ports.map((p: any) => p.getInfo?.().usbProductId?.toString() || 'Unknown');
             } catch (error) {
-                console.error('Failed to fetch serial ports:', error);
+                console.warn('Serial ports not available (web version doesn\'t need them):', error);
+                // Serial ports are optional for web version - don't show error
             }
         },
         async serialConnect() {
             this.isSerialConnecting = true;
-            let status = await invoke('connect_serial_port', { portName: this.selectedPort })
-                .then(response => {
-                    // Success notification
-                    this.isSerialConnected = true;
-                    this.showNotif('success', 'Serial port connected');
-                })
-                .catch(error => {
-                    // Error notification
-                    this.showNotif('failed', 'Failed to connect serial port');
-                })
-                .finally(() => {
-                    this.isSerialConnecting = false;
-                });
-            console.log(status);
+            try {
+                await this.serialPort.connect(this.selectedPort);
+                this.isSerialConnected = true;
+                this.showNotif('success', 'Serial port connected');
+            } catch (error) {
+                console.error('Failed to connect serial port:', error);
+                this.showNotif('failed', 'Failed to connect serial port');
+            } finally {
+                this.isSerialConnecting = false;
+            }
         },
         async serialDisconnect() {
-            let status = await invoke('disconnect_serial_port')
-                .then(response => {
-                    // Success notification
-                    console.log(response);
-                    this.isSerialConnected = false;
-                    this.showNotif('success', 'Serial port disconnected');
-                })
-                .catch(error => {
-                    // Error notification
-                    console.log(error);
-                    this.showNotif('failed', 'Failed to disconnect serial port');
-                });
-            console.log(status);
+            try {
+                await this.serialPort.disconnect();
+                this.isSerialConnected = false;
+                this.showNotif('success', 'Serial port disconnected');
+            } catch (error) {
+                console.error('Failed to disconnect serial port:', error);
+                this.showNotif('failed', 'Failed to disconnect serial port');
+            }
         },
         async emitSumEvent(event: string, data: any) {
-            console.log(data);
             this.time += (data.value * 1000);
-            emit(event, data);
+            this.emit(event, data);
         },
         async emitEvent(event: string, data: any) {
-            emit(event, data);
+            this.emit(event, data);
         },
         async showNotif(status: 'success' | 'failed', message: string) {
             this.notificationStatus = status;
@@ -436,7 +514,11 @@ export default {
             }, 2000);
         },
         async closeApp() {
-            invoke('close_all_processes');
+            // On web, close just closes the window or navigates home
+            // For PWA, could close the app
+            if (window.confirm('Close application?')) {
+                window.close();
+            }
         }        
     }
 }

@@ -1,13 +1,13 @@
-import { invoke } from "@tauri-apps/api";
-
-export default () => {
+export default defineNuxtPlugin(() => {
   if (process.client) {
     window.onbeforeunload = function () {
-      // Your logic here
-      // For example, sending a message to the Tauri backend
-      //   invoke("close_all_processes");
+      // Perform cleanup if needed, such as:
+      // - Save game state to localStorage
+      // - Close active connections
+      // - Notify server of app closing
+      
       // Optional: Return a string if you want a confirmation dialog
       // return 'Are you sure you want to leave?';
     };
   }
-};
+});

@@ -22,3 +22,21 @@ logs
 .env
 .env.*
 !.env.example
+
+# Wrangler/Cloudflare specific
+.wrangler
+.mutations.json
+wrangler.toml.local
+
+# IDE
+.vscode
+*.swp
+*.swo
+
+# Testing
+coverage
+.nyc_output
+
+# Build artifacts
+build/
+*.wasm

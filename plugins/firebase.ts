@@ -4,27 +4,35 @@ import { getDatabase } from "firebase/database";
 import { getFirestore } from "firebase/firestore";
 
 export default defineNuxtPlugin(() => {
-  const firebaseConfig = {
-    apiKey: "AIzaSyDot-0fDndkYXa9N3QJwvrzwWQxcN3lwdg",
-    authDomain: "sportkit-167c0.firebaseapp.com",
-    databaseURL:
-      "https://sportkit-167c0-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "sportkit-167c0",
-    storageBucket: "sportkit-167c0.appspot.com",
-    messagingSenderId: "71493237069",
-    appId: "1:71493237069:web:97e3343f1cb10c7f929f04",
-  };
+  // Only initialize Firebase on client side
+  if (process.client) {
+    const config = useRuntimeConfig();
 
-  // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
+    const firebaseConfig = {
+      apiKey: config.public.firebaseApiKey,
+      authDomain: config.public.firebaseAuthDomain,
+      databaseURL: `https://${config.public.firebaseProjectId}-default-rtdb.asia-southeast1.firebasedatabase.app`,
+      projectId: config.public.firebaseProjectId,
+      storageBucket: config.public.firebaseStorageBucket,
+      messagingSenderId: config.public.firebaseMessagingSenderId,
+      appId: config.public.firebaseAppId,
+    };
 
-  // Initialize Firestore
-  const firestore = getFirestore(app);
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
 
-  // Provide Firestore to the app
-  return {
-    provide: {
-      firestore,
-    },
-  };
+    // Initialize Firestore
+    const firestore = getFirestore(app);
+
+    // Initialize Realtime Database
+    const database = getDatabase(app);
+
+    // Provide Firestore and Database to the app
+    return {
+      provide: {
+        firestore,
+        database,
+      },
+    };
+  }
 });
