@@ -21,15 +21,17 @@ export default defineNuxtConfig({
     },
     // Use Cloudflare Pages as the preset
     preset: "cloudflare-pages",
-    storage: {
-      redis: {
-        driver: "redis",
-        // Configure redis if needed
-      },
-    },
-    // Cloudflare compatibility
+    // Mark Firebase packages as external to prevent bundling Node.js dependencies
     rollupConfig: {
-      external: ["cloudflare:sockets"],
+      external: [
+        "cloudflare:sockets",
+        "firebase",
+        "firebase/app",
+        "firebase/firestore",
+        "firebase/database",
+        "firebase/auth",
+        "firebase/storage"
+      ],
     },
   },
 
